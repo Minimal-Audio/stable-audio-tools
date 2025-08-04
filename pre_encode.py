@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 import torch
 from torch.nn import functional as F
 
@@ -14,7 +14,9 @@ from stable_audio_tools.models.pretrained import get_pretrained_model
 from stable_audio_tools.models.utils import load_ckpt_state_dict, copy_state_dict
 
 
-def load_model(model_config=None, model_ckpt_path=None, pretrained_name=None, model_half=False):
+def load_model(
+    model_config=None, model_ckpt_path=None, pretrained_name=None, model_half=False
+):
     if pretrained_name is not None:
         print(f"Loading pretrained model {pretrained_name}")
         model, model_config = get_pretrained_model(pretrained_name)
@@ -38,7 +40,7 @@ def load_model(model_config=None, model_ckpt_path=None, pretrained_name=None, mo
 
 class PreEncodedLatentsInferenceWrapper(pl.LightningModule):
     def __init__(
-        self, 
+        self,
         model,
         output_path,
         is_discrete=False,
@@ -46,10 +48,10 @@ class PreEncodedLatentsInferenceWrapper(pl.LightningModule):
         model_config=None,
         dataset_config=None,
         sample_size=1920000,
-        args_dict=None
+        args_dict=None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=['model'])
+        self.save_hyperparameters(ignore=["model"])
         self.model = model
         self.output_path = Path(output_path)
 
@@ -62,7 +64,7 @@ class PreEncodedLatentsInferenceWrapper(pl.LightningModule):
                 "model_config": self.hparams.model_config,
                 "dataset_config": self.hparams.dataset_config,
                 "sample_size": self.hparams.sample_size,
-                "args": self.hparams.args_dict
+                "args": self.hparams.args_dict,
             }
             details_path.write_text(json.dumps(details))
 
@@ -103,11 +105,15 @@ class PreEncodedLatentsInferenceWrapper(pl.LightningModule):
                 np.save(f, latent)
 
             md = metadata[i]
-            padding_mask = F.interpolate(
-                md["padding_mask"].unsqueeze(0).unsqueeze(1).float(),
-                size=latent.shape[1],
-                mode="nearest"
-            ).squeeze().int()
+            padding_mask = (
+                F.interpolate(
+                    md["padding_mask"].unsqueeze(0).unsqueeze(1).float(),
+                    size=latent.shape[1],
+                    mode="nearest",
+                )
+                .squeeze()
+                .int()
+            )
             md["padding_mask"] = padding_mask.cpu().numpy().tolist()
 
             # Convert tensors in md to serializable types
@@ -116,7 +122,9 @@ class PreEncodedLatentsInferenceWrapper(pl.LightningModule):
                     md[k] = v.cpu().numpy().tolist()
 
             # Save metadata to json file
-            metadata_path = self.output_path / str(self.global_rank) / f"{latent_id}.json"
+            metadata_path = (
+                self.output_path / str(self.global_rank) / f"{latent_id}.json"
+            )
             with open(metadata_path, "w") as f:
                 json.dump(md, f)
 
@@ -134,7 +142,7 @@ def main(args):
     model, model_config = load_model(
         model_config=model_config,
         model_ckpt_path=args.ckpt_path,
-        model_half=args.model_half
+        model_half=args.model_half,
     )
 
     data_loader = create_dataloader_from_config(
@@ -144,7 +152,7 @@ def main(args):
         sample_rate=model_config["sample_rate"],
         sample_size=args.sample_size,
         audio_channels=model_config.get("audio_channels", 2),
-        shuffle=args.shuffle
+        shuffle=args.shuffle,
     )
 
     pl_module = PreEncodedLatentsInferenceWrapper(
@@ -155,13 +163,13 @@ def main(args):
         model_config=args.model_config,
         dataset_config=args.dataset_config,
         sample_size=args.sample_size,
-        args_dict=vars(args)
+        args_dict=vars(args),
     )
 
     trainer = pl.Trainer(
         accelerator="gpu",
         devices="auto",
-        num_nodes = args.num_nodes,
+        num_nodes=args.num_nodes,
         strategy=args.strategy,
         precision="16-true" if args.model_half else "32",
         max_steps=args.limit_batches if args.limit_batches else -1,
@@ -170,20 +178,52 @@ def main(args):
     )
     trainer.validate(pl_module, data_loader)
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Encode audio dataset to VAE latents using PyTorch Lightning')
-    parser.add_argument('--model-config', type=str, help='Path to model config', required=False)
-    parser.add_argument('--ckpt-path', type=str, help='Path to unwrapped autoencoder model checkpoint', required=False)
-    parser.add_argument('--model-half', action='store_true', help='Whether to use half precision')
-    parser.add_argument('--dataset-config', type=str, help='Path to dataset config file', required=True)
-    parser.add_argument('--output-path', type=str, help='Path to output folder', required=True)
-    parser.add_argument('--batch-size', type=int, help='Batch size', default=1)
-    parser.add_argument('--sample-size', type=int, help='Number of audio samples to pad/crop to', default=1320960)
-    parser.add_argument('--is-discrete', action='store_true', help='Whether the model is discrete')
-    parser.add_argument('--num-nodes', type=int, help='Number of GPU nodes', default=1)
-    parser.add_argument('--num-workers', type=int, help='Number of dataloader workers', default=4)
-    parser.add_argument('--strategy', type=str, help='PyTorch Lightning strategy', default='auto')
-    parser.add_argument('--limit-batches', type=int, help='Limit number of batches (optional)', default=None)
-    parser.add_argument('--shuffle', action='store_true', help='Shuffle dataset')
+    parser = argparse.ArgumentParser(
+        description="Encode audio dataset to VAE latents using PyTorch Lightning"
+    )
+    parser.add_argument(
+        "--model-config", type=str, help="Path to model config", required=False
+    )
+    parser.add_argument(
+        "--ckpt-path",
+        type=str,
+        help="Path to unwrapped autoencoder model checkpoint",
+        required=False,
+    )
+    parser.add_argument(
+        "--model-half", action="store_true", help="Whether to use half precision"
+    )
+    parser.add_argument(
+        "--dataset-config", type=str, help="Path to dataset config file", required=True
+    )
+    parser.add_argument(
+        "--output-path", type=str, help="Path to output folder", required=True
+    )
+    parser.add_argument("--batch-size", type=int, help="Batch size", default=1)
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        help="Number of audio samples to pad/crop to",
+        default=1320960,
+    )
+    parser.add_argument(
+        "--is-discrete", action="store_true", help="Whether the model is discrete"
+    )
+    parser.add_argument("--num-nodes", type=int, help="Number of GPU nodes", default=1)
+    parser.add_argument(
+        "--num-workers", type=int, help="Number of dataloader workers", default=4
+    )
+    parser.add_argument(
+        "--strategy", type=str, help="PyTorch Lightning strategy", default="auto"
+    )
+    parser.add_argument(
+        "--limit-batches",
+        type=int,
+        help="Limit number of batches (optional)",
+        default=None,
+    )
+    parser.add_argument("--shuffle", action="store_true", help="Shuffle dataset")
     args = parser.parse_args()
     main(args)
