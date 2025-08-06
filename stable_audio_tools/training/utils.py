@@ -120,12 +120,14 @@ def logger_project_name(logger) -> str:
 
 
 def log_metric(logger, key, value, step=None):
-    from lightning.pytorch.loggers import WandbLogger, CometLogger
+    from lightning.pytorch.loggers import WandbLogger, CometLogger, TensorBoardLogger
 
     if isinstance(logger, WandbLogger):
         logger.experiment.log({key: value})
     elif isinstance(logger, CometLogger):
         logger.experiment.log_metrics({key: value}, step=step)
+    elif isinstance(logger, TensorBoardLogger):
+        logger.experiment.add_scalar(key, value, global_step=step)
 
 
 def log_audio(logger, key, audio_path, sample_rate, caption=None):
